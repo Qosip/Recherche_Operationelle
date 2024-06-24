@@ -2,7 +2,7 @@ import openpyxl
 import time
 
 # Lire le fichier Excel
-file_path = "Tableau_donnees_sac_a_dos_Velo.xlsx"  # Assurez-vous que le chemin du fichier est correct
+file_path = "Partie_1/Tableau_donnees_sac_a_dos_Velo.xlsx"  # Assurez-vous que le chemin du fichier est correct
 wb = openpyxl.load_workbook(file_path)
 sheet = wb.active
 
