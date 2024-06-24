@@ -1,6 +1,6 @@
 import pandas as pd
 import os
-import time
+import json
 
 # Obtenir le chemin absolu du répertoire du script Python
 script_directory = os.path.dirname(os.path.abspath(__file__))
@@ -14,71 +14,112 @@ marchandises_df = pd.read_excel(file_path)
 # Afficher un aperçu des données pour vérifier que le chargement a été effectué correctement
 print(marchandises_df.head())
 
-# Dimensions du conteneur (en mètres)
+# Dimensions du conteneur (en mètres) - pour d=2, la longueur et la largeur sont pertinentes
 container_length = 11.583
 container_width = 2.294
 
-# Extraire les dimensions des marchandises sous forme de liste de tuples (longueur, largeur)
-rectangles = [(row['Longueur'], row['Largeur']) for index, row in marchandises_df.iterrows()]
+# Extraire les longueurs, largeurs et désignations des marchandises
+lengths = marchandises_df['Longueur']
+widths = marchandises_df['Largeur']
+designations = marchandises_df['Désignation']
 
-# Fonction d'optimisation pour d=2 Offline avec FFDH
-def d2_ffdh(rectangles, container_length, container_width):
-    start_time = time.time()  # Mesure du temps de début
-    
-    # Trier les rectangles par aire décroissante (heuristique FFDH)
-    rectangles = sorted(rectangles, key=lambda rect: rect[0] * rect[1], reverse=True)
+# Combiner les informations pertinentes dans une seule liste de tuples (longueur, largeur, désignation)
+cargo_items = list(zip(lengths, widths, designations))
+
+# Fonction d'optimisation pour d=2 Offline avec FFD
+def d2_ffd(cargo_items, container_length, container_width):
+    # Trier les marchandises par surface décroissante
+    sorted_items = sorted(cargo_items, key=lambda x: x[0] * x[1], reverse=True)
     wagons = []
+    assignments = []  # Pour garder la trace des marchandises dans chaque wagon
     
-    for rect in rectangles:
+    for length, width, designation in sorted_items:
         placed = False
-        for wagon in wagons:
-            if can_place(wagon, rect, container_length, container_width):
-                place_in_wagon(wagon, rect)
+        for i in range(len(wagons)):
+            if wagons[i] + length * width <= container_length * container_width:
+                wagons[i] += length * width
+                assignments[i].append((length, width, designation))
                 placed = True
                 break
         if not placed:
-            new_wagon = [(0, 0, rect[0], rect[1])]  # (x, y, length, width)
-            wagons.append(new_wagon)
+            wagons.append(length * width)
+            assignments.append([(length, width, designation)])
     
-    end_time = time.time()  # Mesure du temps de fin
-    temps_execution = end_time - start_time  # Calcul du temps d'exécution
+    # Calculer la surface non occupée
+    used_space = sum(wagons)
+    unused_space = container_length * container_width * len(wagons) - used_space
     
-    surface_totale_utilisee = sum(l * w for wagon in wagons for x, y, l, w in wagon)
-    surface_totale_conteneur = container_length * container_width
-    surface_inutilisee = surface_totale_conteneur - surface_totale_utilisee
+    return len(wagons), unused_space, assignments
+
+# Fonction d'optimisation pour d=2 Online avec FF
+def d2_ff(cargo_items, container_length, container_width):
+    wagons = []
+    assignments = []  # Pour garder la trace des marchandises dans chaque wagon
     
-    return len(wagons), temps_execution, surface_inutilisee, wagons
+    for length, width, designation in cargo_items:
+        placed = False
+        for i in range(len(wagons)):
+            if wagons[i] + length * width <= container_length * container_width:
+                wagons[i] += length * width
+                assignments[i].append((length, width, designation))
+                placed = True
+                break
+        if not placed:
+            wagons.append(length * width)
+            assignments.append([(length, width, designation)])
+    
+    # Calculer la surface non occupée
+    used_space = sum(wagons)
+    unused_space = container_length * container_width * len(wagons) - used_space
+    
+    return len(wagons), unused_space, assignments
 
-# Fonction auxiliaire pour vérifier si le rectangle peut être placé dans le wagon
-def can_place(wagon, rect, container_length, container_width):
-    for x, y, l, w in wagon:
-        # Vérifier si nous pouvons le placer à droite
-        if x + l + rect[0] <= container_length and y + rect[1] <= container_width:
-            return True
-        # Vérifier si nous pouvons le placer en dessous
-        if x + rect[0] <= container_length and y + w + rect[1] <= container_width:
-            return True
-    return False
+# Calculer le nombre de wagons nécessaires pour d=2 Offline (FFD) et Online (FF)
+d2_offline_wagons, d2_offline_unused, d2_offline_assignments = d2_ffd(cargo_items, container_length, container_width)
+d2_online_wagons, d2_online_unused, d2_online_assignments = d2_ff(cargo_items, container_length, container_width)
 
-# Fonction auxiliaire pour placer le rectangle dans le wagon
-def place_in_wagon(wagon, rect):
-    for i, (x, y, l, w) in enumerate(wagon):
-        # Essayer de le placer à droite
-        if x + l + rect[0] <= container_length and y + rect[1] <= container_width:
-            wagon.append((x + l, y, rect[0], rect[1]))
-            return
-        # Essayer de le placer en dessous
-        if x + rect[0] <= container_length and y + w + rect[1] <= container_width:
-            wagon.append((x, y + w, rect[0], rect[1]))
-            return
-    # Si aucune place n'a été trouvée (ne devrait pas atteindre ici en raison de la vérification avant l'appel)
+# Afficher les résultats pour d=2 Offline (FFD)
+print(f"Nombre de wagons nécessaires (d=2 Offline avec FFD): {d2_offline_wagons}")
+print(f"Surface non occupée pour d=2 Offline avec FFD: {d2_offline_unused:.2f} mètres carrés")
+print("Combinaisons des marchandises dans les wagons (Offline avec FFD):")
+for i, wagon in enumerate(d2_offline_assignments):
+    print(f"Wagon {i + 1}: {wagon}")
 
-# Calculer le nombre de wagons nécessaires pour d=2 Offline (FFDH) et mesurer le temps d'exécution
-nombre_wagons, temps_execution, surface_inutilisee, wagons = d2_ffdh(rectangles, container_length, container_width)
+# Afficher les résultats pour d=2 Online (FF)
+print(f"Nombre de wagons nécessaires (d=2 Online avec FF): {d2_online_wagons}")
+print(f"Surface non occupée pour d=2 Online avec FF: {d2_online_unused:.2f} mètres carrés")
+print("Combinaisons des marchandises dans les wagons (Online avec FF):")
+for i, wagon in enumerate(d2_online_assignments):
+    print(f"Wagon {i + 1}: {wagon}")
 
-# Affichage des résultats pour la version offline
-print("Version Offline (FFDH)")
-print(f"Nombre de wagons : {nombre_wagons}")
-print(f"Temps d'exécution : {temps_execution:.6f} secondes")
-print(f"Surface inutilisée : {surface_inutilisee:.2f} m²")
-print(f"Wagons : {wagons}")
+# Créer une structure JSON selon le format demandé
+def create_json_structure(assignments):
+    json_data = {}
+    for wagon_index, wagon in enumerate(assignments):
+        wagon_key = f"wagon {wagon_index + 1}"
+        json_data[wagon_key] = {}
+        for obj_index, (length, width, designation) in enumerate(wagon):
+            object_key = f"objet {obj_index + 1}"
+            json_data[wagon_key][object_key] = {
+                "longueur": length,
+                "largeur": width,
+                "designation": designation
+            }
+    return json_data
+
+# Créer la structure JSON finale pour les wagons
+output_data = {
+    "d2": {
+        "Offline_FFD": create_json_structure(d2_offline_assignments),
+        "Online_FF": create_json_structure(d2_online_assignments)
+    }
+}
+
+# Définir le chemin pour le fichier JSON
+json_file_path = os.path.join(script_directory, "wagon_assignments_d2.json")
+
+# Écrire les données dans le fichier JSON
+with open(json_file_path, 'w') as json_file:
+    json.dump(output_data, json_file, indent=4)
+
+print(f"Les données des wagons ont été exportées dans le fichier {json_file_path}")

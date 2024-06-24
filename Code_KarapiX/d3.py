@@ -1,50 +1,60 @@
 import pandas as pd
 import os
 import time
+import json
 
 # Fonctions d'optimisation pour d=3
-def d3_offline_ffd(lengths, widths, heights, container_length, container_width, container_height):
-    sorted_goods = sorted(zip(lengths, widths, heights), key=lambda x: x[0] * x[1] * x[2])
-    wagons = 0
+def d3_offline_ffd(lengths, widths, heights, designations, container_length, container_width, container_height):
+    # Trier les marchandises par volume décroissant
+    sorted_goods = sorted(zip(lengths, widths, heights, designations), key=lambda x: x[0] * x[1] * x[2], reverse=True)
+    wagons = []
+    assignments = []
     current_volume = 0
     container_volume = container_length * container_width * container_height
-
-    for length, width, height in sorted_goods:
+    
+    for length, width, height, designation in sorted_goods:
         volume = length * width * height
-        if current_volume + volume <= container_volume:
-            current_volume += volume
-        else:
-            wagons += 1
-            current_volume = volume
+        placed = False
+        for wagon in wagons:
+            if wagon['volume'] + volume <= container_volume:
+                wagon['volume'] += volume
+                wagon['goods'].append((length, width, height, designation))
+                placed = True
+                break
+        
+        if not placed:
+            new_wagon = {'volume': volume, 'goods': [(length, width, height, designation)]}
+            wagons.append(new_wagon)
+    
+    return len(wagons), wagons
 
-    if current_volume > 0:
-        wagons += 1
-
-    return wagons
-
-def d3_online(lengths, widths, heights, container_length, container_width, container_height):
-    wagons = 0
+def d3_online(lengths, widths, heights, designations, container_length, container_width, container_height):
+    wagons = []
     current_volume = 0
     container_volume = container_length * container_width * container_height
-
-    for length, width, height in zip(lengths, widths, heights):
+    
+    for length, width, height, designation in zip(lengths, widths, heights, designations):
         volume = length * width * height
-        if current_volume + volume <= container_volume:
-            current_volume += volume
-        else:
-            wagons += 1
-            current_volume = volume
-
-    if current_volume > 0:
-        wagons += 1
-
-    return wagons
+        placed = False
+        for wagon in wagons:
+            if wagon['volume'] + volume <= container_volume:
+                wagon['volume'] += volume
+                wagon['goods'].append((length, width, height, designation))
+                placed = True
+                break
+        
+        if not placed:
+            new_wagon = {'volume': volume, 'goods': [(length, width, height, designation)]}
+            wagons.append(new_wagon)
+    
+    return len(wagons), wagons
 
 def display_results_d3(d3_offline_wagons, d3_online_wagons):
     print(f"Nombre de wagons nécessaires (d=3 Offline FFD): {d3_offline_wagons}")
     print(f"Nombre de wagons nécessaires (d=3 Online): {d3_online_wagons}")
 
-def evaluate_time_complexity_d3(lengths, widths, heights, container_length, container_width, container_height, offline_function, online_function):
+# Fonction pour évaluer la complexité temporelle
+def evaluate_time_complexity_d3(lengths, widths, heights, designations, container_length, container_width, container_height, offline_function, online_function):
     times_offline = []
     times_online = []
     sizes = []
@@ -53,22 +63,39 @@ def evaluate_time_complexity_d3(lengths, widths, heights, container_length, cont
         subset_lengths = lengths[:size]
         subset_widths = widths[:size]
         subset_heights = heights[:size]
+        subset_designations = designations[:size]
         
-        # Measure time for offline function
+        # Mesurer le temps pour la fonction offline
         start_time_offline = time.time()
-        offline_function(subset_lengths, subset_widths, subset_heights, container_length, container_width, container_height)
+        offline_function(subset_lengths, subset_widths, subset_heights, subset_designations, container_length, container_width, container_height)
         end_time_offline = time.time()
         times_offline.append(end_time_offline - start_time_offline)
         
-        # Measure time for online function
+        # Mesurer le temps pour la fonction online
         start_time_online = time.time()
-        online_function(subset_lengths, subset_widths, subset_heights, container_length, container_width, container_height)
+        online_function(subset_lengths, subset_widths, subset_heights, subset_designations, container_length, container_width, container_height)
         end_time_online = time.time()
         times_online.append(end_time_online - start_time_online)
         
         sizes.append(size)
     
     return sizes, times_offline, times_online
+
+# Fonction pour créer la structure JSON
+def create_json_structure(assignments):
+    json_data = {}
+    for wagon_index, wagon in enumerate(assignments):
+        wagon_key = f"wagon {wagon_index + 1}"
+        json_data[wagon_key] = {}
+        for obj_index, (length, width, height, designation) in enumerate(wagon['goods']):
+            object_key = f"objet {obj_index + 1}"
+            json_data[wagon_key][object_key] = {
+                "longueur": length,
+                "largeur": width,
+                "hauteur": height,
+                "designation": designation
+            }
+    return json_data
 
 if __name__ == "__main__":
     # Obtenir le chemin absolu du répertoire du script Python
@@ -88,29 +115,34 @@ if __name__ == "__main__":
     container_width = 2.294
     container_height = 2.569
 
-    # Extraire les dimensions des marchandises
+    # Extraire les dimensions et désignations des marchandises
     lengths = marchandises_df['Longueur']
     widths = marchandises_df['Largeur']
     heights = marchandises_df['Hauteur']
+    designations = marchandises_df['Désignation']
 
     # Calculer le nombre de wagons nécessaires pour d=3 Offline FFI et Online
-    d3_offline_wagons = d3_offline_ffd(lengths, widths, heights, container_length, container_width, container_height)
-    d3_online_wagons = d3_online(lengths, widths, heights, container_length, container_width, container_height)
+    d3_offline_wagons, d3_offline_assignments = d3_offline_ffd(lengths, widths, heights, designations, container_length, container_width, container_height)
+    d3_online_wagons, d3_online_assignments = d3_online(lengths, widths, heights, designations, container_length, container_width, container_height)
 
     # Afficher les résultats pour d=3
     display_results_d3(d3_offline_wagons, d3_online_wagons)
 
     # Calculer l'espace non utilisé pour d=3
     total_volume = container_length * container_width * container_height
-    used_volume = d3_offline_wagons * total_volume
-    unused_volume = total_volume - used_volume
+    used_volume_offline = sum(wagon['volume'] for wagon in d3_offline_assignments)
+    unused_volume_offline = (d3_offline_wagons * total_volume) - used_volume_offline
 
-    print(f"Espace non utilisé pour d=3 : {unused_volume:.2f} m³")
+    used_volume_online = sum(wagon['volume'] for wagon in d3_online_assignments)
+    unused_volume_online = (d3_online_wagons * total_volume) - used_volume_online
+
+    print(f"Espace non utilisé pour d=3 Offline FFD : {unused_volume_offline:.2f} m³")
+    print(f"Espace non utilisé pour d=3 Online : {unused_volume_online:.2f} m³")
 
     # Évaluer la complexité temporelle pour d=3 Offline FFI et Online
-    sizes, times_offline, times_online = evaluate_time_complexity_d3(lengths, widths, heights, container_length, container_width, container_height, d3_offline_ffd, d3_online)
+    sizes, times_offline, times_online = evaluate_time_complexity_d3(lengths, widths, heights, designations, container_length, container_width, container_height, d3_offline_ffd, d3_online)
 
-    # Afficher les temps de calcul pour d=3 Offline FFI et Online
+    # Afficher les temps de calcul pour d=3 Offline FFD et Online
     print("Temps de calcul pour d=3 Offline FFD :")
     for size, time_offline in zip(sizes, times_offline):
         print(f"Taille du subset : {size}, Temps : {time_offline:.6f} secondes")
@@ -118,3 +150,20 @@ if __name__ == "__main__":
     print("Temps de calcul pour d=3 Online :")
     for size, time_online in zip(sizes, times_online):
         print(f"Taille du subset : {size}, Temps : {time_online:.6f} secondes")
+
+    # Créer la structure JSON finale pour les wagons
+    output_data = {
+        "d3": {
+            "Offline_FFD": create_json_structure(d3_offline_assignments),
+            "Online_FF": create_json_structure(d3_online_assignments)
+        }
+    }
+
+    # Définir le chemin pour le fichier JSON
+    json_file_path = os.path.join(script_directory, "wagon_assignments_d3.json")
+
+    # Écrire les données dans le fichier JSON
+    with open(json_file_path, 'w') as json_file:
+        json.dump(output_data, json_file, indent=4)
+
+    print(f"Les données des wagons ont été exportées dans le fichier {json_file_path}")

@@ -1,6 +1,5 @@
 import pandas as pd
 import os
-import time
 import json
 
 # Obtenir le chemin absolu du répertoire du script Python
@@ -15,17 +14,15 @@ marchandises_df = pd.read_excel(file_path)
 # Afficher un aperçu des données pour vérifier que le chargement a été effectué correctement
 print(marchandises_df.head())
 
-# Dimensions du conteneur (en mètres)
+# Dimensions du conteneur (en mètres) - pour d=1, seule la longueur est pertinente
 container_length = 11.583
 
-# Extraire les longueurs, largeurs, hauteurs et désignations des marchandises
+# Extraire les longueurs et désignations des marchandises
 lengths = marchandises_df['Longueur']
-widths = marchandises_df['Largeur']
-heights = marchandises_df['Hauteur']
 designations = marchandises_df['Désignation']
 
-# Combiner les informations dans une seule liste de tuples
-cargo_items = list(zip(lengths, widths, heights, designations))
+# Combiner les informations pertinentes dans une seule liste de tuples (longueur, désignation)
+cargo_items = list(zip(lengths, designations))
 
 # Fonction d'optimisation pour d=1 Offline avec FFD
 def d1_ffd(cargo_items, container_length):
@@ -34,19 +31,19 @@ def d1_ffd(cargo_items, container_length):
     wagons = []
     assignments = []  # Pour garder la trace des marchandises dans chaque wagon
     
-    for length, width, height, designation in sorted_items:
+    for length, designation in sorted_items:
         # Trouver le premier wagon où la marchandise peut entrer
         placed = False
         for i in range(len(wagons)):
             if wagons[i] + length <= container_length:
                 wagons[i] += length
-                assignments[i].append((length, width, height, designation))
+                assignments[i].append((length, designation))
                 placed = True
                 break
         # Si aucune place n'est trouvée, ajouter un nouveau wagon
         if not placed:
             wagons.append(length)
-            assignments.append([(length, width, height, designation)])
+            assignments.append([(length, designation)])
     
     # Calculer la dimension non occupée
     used_space = sum(wagons)
@@ -59,19 +56,19 @@ def d1_ff(cargo_items, container_length):
     wagons = []
     assignments = []  # Pour garder la trace des marchandises dans chaque wagon
     
-    for length, width, height, designation in cargo_items:
+    for length, designation in cargo_items:
         # Trouver le premier wagon où la marchandise peut entrer
         placed = False
         for i in range(len(wagons)):
             if wagons[i] + length <= container_length:
                 wagons[i] += length
-                assignments[i].append((length, width, height, designation))
+                assignments[i].append((length, designation))
                 placed = True
                 break
         # Si aucune place n'est trouvée, ajouter un nouveau wagon
         if not placed:
             wagons.append(length)
-            assignments.append([(length, width, height, designation)])
+            assignments.append([(length, designation)])
     
     # Calculer la dimension non occupée
     used_space = sum(wagons)
@@ -85,14 +82,14 @@ d1_online_wagons, d1_online_unused, d1_online_assignments = d1_ff(cargo_items, c
 
 # Afficher les résultats pour d=1 Offline (FFD)
 print(f"Nombre de wagons nécessaires (d=1 Offline avec FFD): {d1_offline_wagons}")
-print(f"Dimension non occupée pour d=1 Offline avec FFD: {d1_offline_unused:.2f} mètres carrés")
+print(f"Dimension non occupée pour d=1 Offline avec FFD: {d1_offline_unused:.2f} mètres")
 print("Combinaisons des marchandises dans les wagons (Offline avec FFD):")
 for i, wagon in enumerate(d1_offline_assignments):
     print(f"Wagon {i + 1}: {wagon}")
 
 # Afficher les résultats pour d=1 Online (FF)
 print(f"Nombre de wagons nécessaires (d=1 Online avec FF): {d1_online_wagons}")
-print(f"Dimension non occupée pour d=1 Online avec FF: {d1_online_unused:.2f} mètres carrés")
+print(f"Dimension non occupée pour d=1 Online avec FF: {d1_online_unused:.2f} mètres")
 print("Combinaisons des marchandises dans les wagons (Online avec FF):")
 for i, wagon in enumerate(d1_online_assignments):
     print(f"Wagon {i + 1}: {wagon}")
@@ -103,12 +100,10 @@ def create_json_structure(assignments):
     for wagon_index, wagon in enumerate(assignments):
         wagon_key = f"wagon {wagon_index + 1}"
         json_data[wagon_key] = {}
-        for obj_index, (length, width, height, designation) in enumerate(wagon):
+        for obj_index, (length, designation) in enumerate(wagon):
             object_key = f"objet {obj_index + 1}"
             json_data[wagon_key][object_key] = {
                 "longueur": length,
-                "largeur": width,
-                "hauteur": height,
                 "designation": designation
             }
     return json_data
@@ -122,7 +117,7 @@ output_data = {
 }
 
 # Définir le chemin pour le fichier JSON
-json_file_path = os.path.join(script_directory, "wagon_assignments.json")
+json_file_path = os.path.join(script_directory, "wagon_assignments_d1.json")
 
 # Écrire les données dans le fichier JSON
 with open(json_file_path, 'w') as json_file:
